@@ -27,8 +27,17 @@ async fn main()  {
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port));
     
     for stream in listener.unwrap().incoming() {
-        let stream = stream.unwrap();
-        handle_connection(stream , path.clone() );
+        match stream {
+            Ok(stream) => {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    handle_connection(stream, path).unwrap_or_else(|error| eprintln!("Failed to handle connection: {}", error));
+                });
+            }
+            Err(e) => {
+                eprintln!("Connection failed: {}", e);
+            }
+        }
     }
 
 }
@@ -80,7 +89,7 @@ fn handle_connection(mut stream: TcpStream, path: String) -> io::Result<()>{
     match fs::read(&full_path){
         Ok(content)=>{
             println!("GET 127.0.0.1 {} -> 200 (OK)", req_path);
-            println!("GET 127.0.0.1 {} -> 200 (OK)", req_path.clone());
+         //   println!("GET 127.0.0.1 {} -> 200 (OK)", req_path.clone());
             let response = format!("HTTP/1.1 200 OK\r\nContent-Type: {}\r\nConnection: close\r\n\r\n",extension);
             let response_to = response.as_bytes();
             stream.write_all(response_to).unwrap();
