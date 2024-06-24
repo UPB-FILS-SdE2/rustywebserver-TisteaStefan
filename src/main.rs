@@ -9,7 +9,7 @@ use std::process::Stdio;
 use std::io::prelude::*;
 
 #[tokio::main]
-async fn main() -> io::Result<()> {
+async fn main() {
     // Parse command-line arguments
     println!("help");
     let args: Vec<String> = env::args().collect();
@@ -34,7 +34,7 @@ async fn main() -> io::Result<()> {
 
         handle_connection(stream , path.clone() );
     }
-    Ok(())
+   // Ok(())
 }
 
 
