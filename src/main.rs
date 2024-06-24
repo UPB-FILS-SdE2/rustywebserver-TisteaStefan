@@ -1,197 +1,102 @@
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Request, Response, Server, StatusCode};
-use hyper::header::{HeaderMap, HeaderValue};
-use std::convert::Infallible;
 use std::env;
 use std::fs;
-use std::path::Path;
-use std::sync::Arc;
+use std::io::{self, Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::path::{Path, PathBuf};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
-use mime_guess;
-use tokio::io::AsyncWriteExt; // Add this import for write_all
-use std::process::Stdio; // Add this import for Stdio
+use std::process::Stdio;
+use std::io::prelude::*;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn main() -> io::Result<()> {
+    // Parse command-line arguments
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
         eprintln!("Usage: {} <port> <root_folder>", args[0]);
         std::process::exit(1);
     }
 
-    let port: u16 = args[1].parse().expect("Invalid port number");
-    let root_folder = Arc::new(args[2].clone());
+    // Extract port number and root folder from command-line arguments
+    let port = args[1].parse::<u16>().expect("Invalid port number");
+    let path = args[2].clone();
 
-    println!("Root folder: {}", root_folder);
+    // Print startup information
+    println!("Root folder: {}", path);
     println!("Server listening on 0.0.0.0:{}", port);
 
-    let make_svc = make_service_fn(move |_conn| {
-        let root_folder = Arc::clone(&root_folder);
-        async move {
-            Ok::<_, Infallible>(service_fn(move |req| {
-                let root_folder = Arc::clone(&root_folder);
-                handle_request(req, root_folder)
-            }))
-        }
-    });
+    // Start TCP listener
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", port))?;
+    
+    for stream in listener.incoming() {
+        let stream = stream.unwrap();
 
-    let addr = ([0, 0, 0, 0], port).into();
-    let server = Server::bind(&addr).serve(make_svc);
-
-    server.await?;
+        handle_connection(stream , path.clone() );
+    }
     Ok(())
 }
 
-async fn handle_request(
-    req: Request<Body>,
-    root_folder: Arc<String>,
-) -> Result<Response<Body>, Infallible> {
-    let method = req.method().clone();
-    let uri = req.uri().clone();
-    let path = uri.path().to_string();
-    let full_path = format!("{}/{}", root_folder, path.trim_start_matches('/'));
-    let headers = req.headers().clone();
 
-    let response = match (method.as_str(), Path::new(&full_path).is_file(), path.as_str()) {
-        ("GET", true, _) => handle_get_request(full_path, path).await,
-        ("GET", false, _) if path.starts_with("/scripts/") => handle_script_request(full_path, path, "GET", headers).await,
-        ("POST", false, _) if path.starts_with("/scripts/") => {
-            let whole_body = hyper::body::to_bytes(req.into_body()).await.unwrap_or_default();
-            handle_script_request_with_body(full_path, path, "POST", headers, whole_body).await
-        }
-        _ => not_found_response(),
+async fn handle_connection(mut stream: TcpStream, path: String) -> io::Result<()>{
+    let mut buffer=[1; 1004];
+    stream.read(&mut buffer).unwrap();
+    let req = String::from_utf8_lossy(&buffer[..]).to_string();
+    let mut lines = req.split("\r\n");
+    let req_line = lines.next().ok_or("err");
+    let mut req_parts = req_line.unwrap().split_whitespace();
+    let req_type = req_parts.next().ok_or("Missing reqtype").unwrap().to_string();
+    let req_path = req_parts.next().ok_or("Missing path").unwrap().to_string();
+    let mut headers = Vec::new();
+   // Skip the HTTP version
+    req_parts.next().ok_or("Missing HTTP version").unwrap();
+    for line in lines.clone() {
+        if line.is_empty() {
+             break;
+            }
+         headers.push(line.to_string());
+    }
+    let body = lines.clone().collect::<Vec<&str>>().join("\r\n");
+    let body = if body.is_empty() { None } else { Some(body) }.unwrap();
+    
+    
+    
+    let mut full_path=path.clone();
+    full_path.push_str(req_path.as_str().clone());
+    let full_P=Path::new(&full_path);
+    let extension=match full_P.extension().and_then(|ext| ext.to_str()) {
+        Some("txt") => "text/plain; charset=utf-8",
+        Some("html") => "text/html; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("js") => "text/javascript; charset=utf-8",
+        Some("jpg") | Some("jpeg")  => "image/jpeg",
+        Some("jpeg") => "image/jpeg",
+        Some("png") => "image/png",
+        Some("zip") => "application/zip",
+        _ => "application/octet-stream",
     };
-
-    Ok(response)
-}
-
-async fn handle_get_request(full_path: String, path: String) -> Response<Body> {
-    match fs::read(&full_path) {
-        Ok(contents) => {
-            let mime_type = mime_guess::from_path(&full_path).first_or_octet_stream().to_string();
-            let response = Response::builder()
-                .status(StatusCode::OK)
-                .header("Content-Type", mime_type)
-                .header("Connection", "close")
-                .body(Body::from(contents))
-                .unwrap();
-
-            println!("GET 127.0.0.1 {} -> 200 (OK)", path);
-            response
+    match fs::read(&full_path){
+        Ok(content)=>{
+            println!("GET 127.0.0.1 {} -> 200 (OK)", req_path);
+            println!("GET 127.0.0.1 {} -> 200 (OK)", req_path.clone());
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nConnection: close\r\n\r\n",
+                extension
+            );
+            let response_to = response.as_bytes();
+            stream.write(response_to).unwrap();
+            stream.write(&content).unwrap();
+            stream.flush().unwrap();
         }
-        Err(_) => forbidden_response(),
-    }
-}
-
-async fn handle_script_request(
-    script_path: String,
-    path: String,
-    method: &str,
-    headers: HeaderMap<HeaderValue>,
-) -> Response<Body> {
-    if Path::new(&script_path).is_file() {
-        let mut cmd = Command::new(&script_path);
-        set_env_vars(&mut cmd, headers, method, &path);
-
-        let output = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output().await;
-        match output {
-            Ok(output) => {
-                if output.status.success() {
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    let response = Response::builder()
-                        .status(StatusCode::OK)
-                        .header("Connection", "close")
-                        .body(Body::from(stdout.to_string()))
-                        .unwrap();
-
-                    println!("{} 127.0.0.1 {} -> 200 (OK)", method, path);
-                    response
-                } else {
-                    internal_server_error_response()
-                }
-            }
-            Err(_) => internal_server_error_response(),
-        }
-    } else {
-        not_found_response()
-    }
-}
-
-async fn handle_script_request_with_body(
-    script_path: String,
-    path: String,
-    method: &str,
-    headers: HeaderMap<HeaderValue>,
-    body: hyper::body::Bytes,
-) -> Response<Body> {
-    if Path::new(&script_path).is_file() {
-        let mut cmd = Command::new(&script_path);
-        set_env_vars(&mut cmd, headers, method, &path);
-
-        cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-
-        let mut child = cmd.spawn().expect("Failed to spawn script");
-
-        if let Some(mut stdin) = child.stdin.take() {
-            tokio::spawn(async move {
-                stdin.write_all(&body).await.expect("Failed to write to stdin");
-            });
-        }
-
-        let output = child.wait_with_output().await;
-        match output {
-            Ok(output) => {
-                if output.status.success() {
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    let response = Response::builder()
-                        .status(StatusCode::OK)
-                        .header("Connection", "close")
-                        .body(Body::from(stdout.to_string()))
-                        .unwrap();
-
-                    println!("{} 127.0.0.1 {} -> 200 (OK)", method, path);
-                    response
-                } else {
-                    internal_server_error_response()
-                }
-            }
-            Err(_) => internal_server_error_response(),
-        }
-    } else {
-        not_found_response()
-    }
-}
-
-fn set_env_vars(cmd: &mut Command, headers: HeaderMap<HeaderValue>, method: &str, path: &str) {
-    for (key, value) in headers.iter() {
-        if let Ok(val_str) = value.to_str() {
-            cmd.env(key.as_str(), val_str);
+        Err(_) => {
+            println!("GET 127.0.0.1 {} -> 404 (Not Found)", req_path);
+            let response = b"HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n<html>404 Not Found</html>";
+            stream.write(response).unwrap();
+            stream.flush().unwrap();
         }
     }
-    cmd.env("Method", method);
-    cmd.env("Path", path);
-}
 
-fn forbidden_response() -> Response<Body> {
-    Response::builder()
-        .status(StatusCode::FORBIDDEN)
-        .header("Connection", "close")
-        .body(Body::from("<html>403 Forbidden</html>"))
-        .unwrap()
-}
 
-fn not_found_response() -> Response<Body> {
-    Response::builder()
-        .status(StatusCode::NOT_FOUND)
-        .header("Connection", "close")
-        .body(Body::from("<html>404 Not Found</html>"))
-        .unwrap()
-}
+    
 
-fn internal_server_error_response() -> Response<Body> {
-    Response::builder()
-        .status(StatusCode::INTERNAL_SERVER_ERROR)
-        .header("Connection", "close")
-        .body(Body::from("<html>500 Internal Server Error</html>"))
-        .unwrap()
+    Ok(())
 }
