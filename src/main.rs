@@ -1,15 +1,14 @@
 use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpStream;
+use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::process::Command;
-use std::process::Stdio;
 use std::io::prelude::*;
 
 #[tokio::main]
-async fn main() {
+async fn main()  {
     // Parse command-line arguments
     println!("help");
     let args: Vec<String> = env::args().collect();
@@ -27,14 +26,14 @@ async fn main() {
     println!("Server listening on 0.0.0.0:{}", port);
 
     // Start TCP listener
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", port))?;
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", port));
     
-    for stream in listener.incoming() {
+    for stream in listener.unwrap().incoming() {
         let stream = stream.unwrap();
 
         handle_connection(stream , path.clone() );
     }
-   // Ok(())
+
 }
 
 
