@@ -59,7 +59,7 @@ fn handle_connection(mut stream: TcpStream, path: String) -> io::Result<()>{
     
     let mut full_path=path.clone();
    full_path.push_str(req_path.as_str());
-   full_path.trim_end_matches('/').to_string();
+   //full_path.trim_end_matches('/').to_string();
     let full_P=Path::new(&full_path);
     let extension=match full_P.extension().and_then(|ext| ext.to_str()) {
         Some("txt") => "text/plain; charset=utf-8",
