@@ -27,17 +27,8 @@ async fn main()  {
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port));
     
     for stream in listener.unwrap().incoming() {
-        match stream {
-            Ok(stream) => {
-                let path = path.clone();
-                std::thread::spawn(move || {
-                    handle_connection(stream, path).unwrap_or_else(|error| eprintln!("Failed to handle connection: {}", error));
-                });
-            }
-            Err(e) => {
-                eprintln!("Connection failed: {}", e);
-            }
-        }
+        let stream = stream.unwrap();
+        handle_connection(stream , path.clone() );
     }
 
 }
