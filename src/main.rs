@@ -30,15 +30,15 @@ async fn main()  {
     
     for stream in listener.unwrap().incoming() {
         let stream = stream.unwrap();
-
         handle_connection(stream , path.clone() );
     }
 
 }
 
 
-async fn handle_connection(mut stream: TcpStream, path: String) -> io::Result<()>{
-    let mut buffer=[1; 1004];
+fn handle_connection(mut stream: TcpStream, path: String) -> io::Result<()>{
+    println!("help");
+    let mut buffer=[1; 1024];
     stream.read(&mut buffer).unwrap();
     let req = String::from_utf8_lossy(&buffer[..]).to_string();
     let mut lines = req.split("\r\n");
