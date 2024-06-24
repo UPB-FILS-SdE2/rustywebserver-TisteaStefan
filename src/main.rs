@@ -10,7 +10,6 @@ use std::io::prelude::*;
 #[tokio::main]
 async fn main()  {
     // Parse command-line arguments
-    println!("help");
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
         eprintln!("Usage: {} <port> <root_folder>", args[0]);
@@ -20,7 +19,6 @@ async fn main()  {
     // Extract port number and root folder from command-line arguments
     let port = args[1].parse::<u16>().expect("Invalid port number");
     let path = args[2].clone();
-
     // Print startup information
     println!("Root folder: {}", path);
     println!("Server listening on 0.0.0.0:{}", port);
@@ -37,7 +35,6 @@ async fn main()  {
 
 
 fn handle_connection(mut stream: TcpStream, path: String) -> io::Result<()>{
-    println!("help");
     let mut buffer=[1; 1024];
     stream.read(&mut buffer).unwrap();
     let req = String::from_utf8_lossy(&buffer[..]).to_string();
@@ -61,7 +58,7 @@ fn handle_connection(mut stream: TcpStream, path: String) -> io::Result<()>{
     
     
     let mut full_path=path.clone();
-    full_path.push_str(req_path.as_str().clone());
+   // full_path.push_str(req_path.as_str());
     let full_P=Path::new(&full_path);
     let extension=match full_P.extension().and_then(|ext| ext.to_str()) {
         Some("txt") => "text/plain; charset=utf-8",
@@ -74,31 +71,31 @@ fn handle_connection(mut stream: TcpStream, path: String) -> io::Result<()>{
         Some("zip") => "application/zip",
         _ => "application/octet-stream",
     };
-    if full_path.starts_with("/..") || full_path.starts_with("/forbidden") {
+    if req_path.starts_with("/..") || req_path.starts_with("/forbidden") {
         println!("GET 127.0.0.1 {} -> 403 (Forbidden)", path);
         let response = b"HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n<html>403 Forbidden</html>";
         stream.write_all(response)?;
-        return Ok(());
-    }
+    }else{
+        println!("{}",full_path);
     match fs::read(&full_path){
         Ok(content)=>{
             println!("GET 127.0.0.1 {} -> 200 (OK)", req_path);
             println!("GET 127.0.0.1 {} -> 200 (OK)", req_path.clone());
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nConnection: close\r\n\r\n",
-                extension
-            );
+            let response = format!("HTTP/1.1 200 OK\r\nContent-Type: {}\r\nConnection: close\r\n\r\n",extension);
             let response_to = response.as_bytes();
-            stream.write(response_to).unwrap();
-            stream.write(&content).unwrap();
+            stream.write_all(response_to).unwrap();
+            stream.write_all(&content).unwrap();
             stream.flush().unwrap();
         }
-        Err(_) => {
-            println!("GET 127.0.0.1 {} -> 404 (Not Found)", req_path);
+        Err(_e) => {
+            println!("why");
+            println!("GET 127.0.0.1 {} -> 404 (Not Found)", full_path);
             let response = b"HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n<html>404 Not Found</html>";
-            stream.write(response).unwrap();
+            stream.write_all(response).unwrap();
             stream.flush().unwrap();
         }
+    }
+    
     }
 
 
