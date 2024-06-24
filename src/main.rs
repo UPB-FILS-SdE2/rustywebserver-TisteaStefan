@@ -58,7 +58,8 @@ fn handle_connection(mut stream: TcpStream, path: String) -> io::Result<()>{
     
     
     let mut full_path=path.clone();
-   // full_path.push_str(req_path.as_str());
+   //full_path.push_str(req_path.as_str());
+   full_path.trim_end_matches('/').to_string();
     let full_P=Path::new(&full_path);
     let extension=match full_P.extension().and_then(|ext| ext.to_str()) {
         Some("txt") => "text/plain; charset=utf-8",
@@ -76,7 +77,6 @@ fn handle_connection(mut stream: TcpStream, path: String) -> io::Result<()>{
         let response = b"HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n<html>403 Forbidden</html>";
         stream.write_all(response)?;
     }else{
-        println!("{}",full_path);
     match fs::read(&full_path){
         Ok(content)=>{
             println!("GET 127.0.0.1 {} -> 200 (OK)", req_path);
