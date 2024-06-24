@@ -88,7 +88,7 @@ fn handle_connection(mut stream: TcpStream, path: String) -> io::Result<()>{
             stream.flush().unwrap();
         }
         Err(_e) => {
-            println!("GET 127.0.0.1 {} -> 404 (Not Found)", full_path);
+            println!("GET 127.0.0.1 {} -> 404 (Not Found)", path);
             let response = b"HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n<html>404 Not Found</html>";
             stream.write_all(response).unwrap();
             stream.flush().unwrap();
