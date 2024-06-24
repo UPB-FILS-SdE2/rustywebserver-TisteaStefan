@@ -11,6 +11,7 @@ use std::io::prelude::*;
 #[tokio::main]
 async fn main() -> io::Result<()> {
     // Parse command-line arguments
+    println!("help");
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
         eprintln!("Usage: {} <port> <root_folder>", args[0]);
@@ -74,6 +75,12 @@ async fn handle_connection(mut stream: TcpStream, path: String) -> io::Result<()
         Some("zip") => "application/zip",
         _ => "application/octet-stream",
     };
+    if full_path.starts_with("/..") || full_path.starts_with("/forbidden") {
+        println!("GET 127.0.0.1 {} -> 403 (Forbidden)", path);
+        let response = b"HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n<html>403 Forbidden</html>";
+        stream.write_all(response)?;
+        return Ok(());
+    }
     match fs::read(&full_path){
         Ok(content)=>{
             println!("GET 127.0.0.1 {} -> 200 (OK)", req_path);
