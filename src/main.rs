@@ -73,7 +73,7 @@ fn handle_connection(mut stream: TcpStream, path: String) -> io::Result<()>{
         _ => "application/octet-stream",
     };
     if req_path.starts_with("/..") || req_path.starts_with("/forbidden") {
-        println!("GET 127.0.0.1 {} -> 403 (Forbidden)", path);
+        println!("GET 127.0.0.1 {} -> 403 (Forbidden)", req_path);
         let response = b"HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n<html>403 Forbidden</html>";
         stream.write_all(response)?;
     }else{
